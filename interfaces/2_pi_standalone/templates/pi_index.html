@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gesture Recognition: Pi Robot Control</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #171b21;
+    --border: #2a2f37;
+    --text: #e8eaed;
+    --muted: #8b929e;
+    --ok: #35d07f;
+    --warn: #ff6b57;
+    --accent: #4fc3ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 24px;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(360px, 640px) 320px;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  .video-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .video-card img {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #000;
+  }
+  .video-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .fps-badge { font-variant-numeric: tabular-nums; color: var(--text); }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; }
+  .row:last-child { margin-bottom: 0; }
+  .row .label { color: var(--muted); }
+  .row .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .pill.ok { background: rgba(53, 208, 127, 0.15); color: var(--ok); }
+  .pill.warn { background: rgba(255, 107, 87, 0.15); color: var(--warn); }
+  .pill.muted { background: rgba(139, 146, 158, 0.15); color: var(--muted); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .command {
+    font-size: 22px;
+    font-weight: 700;
+    text-align: center;
+    padding: 14px;
+    border-radius: 8px;
+    background: rgba(79, 195, 255, 0.08);
+    color: var(--accent);
+    letter-spacing: 0.03em;
+  }
+  button {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-stop { background: var(--warn); color: #1a0d0a; margin-bottom: 8px; }
+  .btn-reset { background: var(--border); color: var(--text); }
+</style>
+</head>
+<body>
+  <h1>
+    Pi Robot Control
+    {% if dry_run %}<span class="pill warn"><span class="dot"></span> SIMULATION -- motors disabled</span>{% endif %}
+  </h1>
+  <p class="subtitle">
+    Camera, gesture recognition, and motor control all run on this Raspberry Pi &mdash; no network round-trip.
+  </p>
+
+  <div class="layout">
+    <div class="video-card">
+      <img src="/video_feed" alt="live camera feed">
+      <div class="video-footer">
+        <span id="hand-status" class="pill muted"><span class="dot"></span> no hand</span>
+        <span class="fps-badge" id="fps">-- fps</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h2>Gesture</h2>
+        <div class="row">
+          <span class="label">raw prediction</span>
+          <span class="value" id="raw-pred">-</span>
+        </div>
+        <div class="row">
+          <span class="label">confidence</span>
+          <span class="value" id="conf">-</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Command Sent to Motors</h2>
+        <div class="command" id="sent-command">-</div>
+      </div>
+
+      <div class="panel">
+        <button class="btn-stop" id="stop-btn">STOP NOW</button>
+        <button class="btn-reset" id="reset-btn">Reset gesture smoother</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+async function poll() {
+  try {
+    const r = await fetch("/stats");
+    const s = await r.json();
+
+    document.getElementById("fps").textContent = s.fps.toFixed(1) + " fps";
+
+    const handEl = document.getElementById("hand-status");
+    handEl.className = "pill " + (s.hand_detected ? "ok" : "muted");
+    handEl.innerHTML = '<span class="dot"></span> ' + (s.hand_detected ? "hand visible" : "no hand");
+
+    document.getElementById("raw-pred").textContent = s.pred ? s.pred : "-";
+    document.getElementById("conf").textContent = s.pred ? Math.round(s.conf * 100) + "%" : "-";
+    document.getElementById("sent-command").textContent = s.sent_command || "-";
+  } catch (e) {
+    // network hiccup polling our own /stats -- ignore, try again next tick
+  }
+}
+setInterval(poll, 300);
+poll();
+
+document.getElementById("stop-btn").addEventListener("click", () => {
+  fetch("/stop", { method: "POST" });
+});
+document.getElementById("reset-btn").addEventListener("click", () => {
+  fetch("/reset", { method: "POST" });
+});
+</script>
+</body>
+</html>

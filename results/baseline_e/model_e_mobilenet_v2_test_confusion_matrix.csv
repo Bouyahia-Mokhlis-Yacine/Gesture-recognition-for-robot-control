@@ -1,0 +1,6 @@
+,left,right,forward,backward,stop
+left,40,5,2,0,0
+right,1,45,2,0,1
+forward,1,0,44,0,0
+backward,0,0,0,43,0
+stop,1,1,4,0,33

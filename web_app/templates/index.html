@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gesture Recognition: Live Model Comparison</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #171b21;
+    --border: #2a2f37;
+    --text: #e8eaed;
+    --muted: #8b929e;
+    --ok: #35d07f;
+    --warn: #ff6b57;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 24px;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(360px, 560px) 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  .video-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    position: sticky;
+    top: 24px;
+  }
+  .video-card img {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #000;
+  }
+  .video-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .fps-badge {
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  .hand-badge {
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+  }
+  .hand-badge.on { color: var(--ok); border-color: var(--ok); }
+  .hand-badge.off { color: var(--muted); }
+  button#reset-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  button#reset-btn:hover { border-color: var(--muted); }
+
+  .models {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .model-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    border-top: 3px solid var(--card-color, var(--border));
+    transition: opacity 0.15s linear;
+  }
+  .model-card.disabled { opacity: 0.42; }
+  .model-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .model-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    flex: 0 0 auto;
+  }
+  .model-toggle input { accent-color: var(--card-color); width: 15px; height: 15px; cursor: pointer; }
+  .model-name {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  .model-desc { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+  .confirmed-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .confirmed-label { font-size: 12px; color: var(--muted); }
+  .confirmed-value {
+    font-size: 26px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--card-color);
+  }
+  .confirmed-value.empty { color: var(--muted); font-size: 18px; font-weight: 400; text-transform: none; }
+  .confirmed-value.unknown { color: var(--warn); font-size: 18px; font-style: italic; text-transform: none; }
+
+  .bars { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .bar-row { display: grid; grid-template-columns: 68px 1fr 38px; align-items: center; gap: 8px; font-size: 11.5px; }
+  .bar-label { color: var(--muted); text-transform: capitalize; }
+  .bar-track { height: 7px; border-radius: 999px; background: #22262d; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; background: var(--card-color); transition: width 0.12s linear; }
+  .bar-pct { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .meta-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    flex-wrap: wrap;
+  }
+  .meta-row b { color: var(--text); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+  <h1>Gesture Recognition -- Live Model Comparison</h1>
+  <p class="subtitle">{{ models | length }} models available -- toggle any on/off below. Running all of them at once is heavy; only enabled ones actually predict each frame.</p>
+
+  <div class="layout">
+    <div class="video-card">
+      <img src="/video_feed" alt="live camera feed">
+      <div class="video-footer">
+        <span>FPS: <span class="fps-badge" id="fps">--</span></span>
+        <span class="hand-badge off" id="hand-badge">no hand</span>
+        <button id="reset-btn">Reset smoothing</button>
+      </div>
+    </div>
+
+    <div class="models">
+      {% for model in models %}
+      <div class="model-card{{ '' if model.enabled else ' disabled' }}" id="card-{{ model.id }}" style="--card-color: {{ model.color }};">
+        <div class="model-head">
+          <div>
+            <div class="model-name">{{ model.label }}</div>
+            <div class="model-desc">{{ model.desc }}</div>
+          </div>
+          <label class="model-toggle">
+            <input type="checkbox" id="{{ model.id }}-toggle" data-id="{{ model.id }}" {{ 'checked' if model.enabled }}>
+            on
+          </label>
+        </div>
+        <div class="confirmed-row">
+          <span class="confirmed-label">confirmed:</span>
+          <span class="confirmed-value empty" id="{{ model.id }}-confirmed">--</span>
+        </div>
+        <div class="bars" id="{{ model.id }}-bars"></div>
+        <div class="meta-row">
+          <span>latency: <b id="{{ model.id }}-latency">--</b> ms</span>
+          <span>raw guess: <b id="{{ model.id }}-raw">--</b></span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+<script>
+const CLASSES = {{ classes | tojson }};
+const MODEL_IDS = {{ models | map(attribute='id') | list | tojson }};
+
+function renderBars(containerId, pred, conf) {
+  const container = document.getElementById(containerId);
+  if (!container.children.length) {
+    container.innerHTML = CLASSES.map(c => `
+      <div class="bar-row" data-cls="${c}">
+        <span class="bar-label">${c}</span>
+        <span class="bar-track"><span class="bar-fill" style="width:0%"></span></span>
+        <span class="bar-pct">0%</span>
+      </div>`).join("");
+  }
+  CLASSES.forEach(c => {
+    const row = container.querySelector(`[data-cls="${c}"]`);
+    const pct = (c === pred) ? Math.round(conf * 100) : 0;
+    row.querySelector(".bar-fill").style.width = pct + "%";
+    row.querySelector(".bar-pct").textContent = pct + "%";
+  });
+}
+
+function updateModel(id, data, isEnabled) {
+  const confirmedEl = document.getElementById(id + "-confirmed");
+  confirmedEl.classList.remove("empty", "unknown");
+  if (!isEnabled) {
+    confirmedEl.textContent = "off";
+    confirmedEl.classList.add("empty");
+  } else if (data.confirmed === "unknown") {
+    confirmedEl.textContent = "sign not recognized";
+    confirmedEl.classList.add("unknown");
+  } else if (data.confirmed) {
+    confirmedEl.textContent = data.confirmed;
+  } else {
+    confirmedEl.textContent = "waiting...";
+    confirmedEl.classList.add("empty");
+  }
+  document.getElementById(id + "-latency").textContent = data.latency_ms ? data.latency_ms.toFixed(1) : "--";
+  document.getElementById(id + "-raw").textContent = data.pred || "--";
+  renderBars(id + "-bars", data.pred, data.conf);
+}
+
+async function poll() {
+  try {
+    const res = await fetch("/stats");
+    const data = await res.json();
+    document.getElementById("fps").textContent = data.fps.toFixed(1);
+    const handBadge = document.getElementById("hand-badge");
+    handBadge.textContent = data.hand_detected ? "hand detected" : "no hand";
+    handBadge.className = "hand-badge " + (data.hand_detected ? "on" : "off");
+    MODEL_IDS.forEach(id => {
+      const isEnabled = data.enabled.includes(id);
+      updateModel(id, data.models[id], isEnabled);
+      document.getElementById("card-" + id).classList.toggle("disabled", !isEnabled);
+      document.getElementById(id + "-toggle").checked = isEnabled;
+    });
+  } catch (e) {
+    // server not ready yet -- keep polling
+  }
+  setTimeout(poll, 150);
+}
+poll();
+
+document.getElementById("reset-btn").addEventListener("click", () => {
+  fetch("/reset", { method: "POST" });
+});
+
+MODEL_IDS.forEach(id => {
+  document.getElementById(id + "-toggle").addEventListener("change", (e) => {
+    const on = e.target.checked;
+    document.getElementById("card-" + id).classList.toggle("disabled", !on);
+    fetch("/toggle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, enabled: on }),
+    });
+  });
+});
+</script>
+</body>
+</html>

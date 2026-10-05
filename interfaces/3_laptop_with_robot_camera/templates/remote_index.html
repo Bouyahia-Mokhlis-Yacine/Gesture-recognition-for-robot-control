@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gesture Recognition: Remote Robot Control</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #171b21;
+    --border: #2a2f37;
+    --text: #e8eaed;
+    --muted: #8b929e;
+    --ok: #35d07f;
+    --warn: #ff6b57;
+    --accent: #4fc3ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 24px;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(600px, 960px) 320px;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  .video-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .video-card img {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #000;
+  }
+  .video-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .fps-badge { font-variant-numeric: tabular-nums; color: var(--text); }
+  .video-stack { display: flex; flex-direction: row; flex-wrap: wrap; gap: 20px; }
+  .video-col { flex: 1 1 320px; min-width: 280px; }
+  .video-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 0 0 6px;
+  }
+  .video-card.unavailable img { opacity: 0.15; }
+  .video-card { position: relative; }
+  .video-empty {
+    display: none;
+    position: absolute;
+    inset: 0 0 32px 0;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 20px;
+  }
+  .video-card.unavailable .video-empty { display: flex; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; }
+  .row:last-child { margin-bottom: 0; }
+  .row .label { color: var(--muted); }
+  .row .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .pill.ok { background: rgba(53, 208, 127, 0.15); color: var(--ok); }
+  .pill.warn { background: rgba(255, 107, 87, 0.15); color: var(--warn); }
+  .pill.muted { background: rgba(139, 146, 158, 0.15); color: var(--muted); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .command {
+    font-size: 22px;
+    font-weight: 700;
+    text-align: center;
+    padding: 14px;
+    border-radius: 8px;
+    background: rgba(79, 195, 255, 0.08);
+    color: var(--accent);
+    letter-spacing: 0.03em;
+  }
+  button {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-stop { background: var(--warn); color: #1a0d0a; margin-bottom: 8px; }
+  .btn-reset { background: var(--border); color: var(--text); }
+  code { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>Remote Robot Control</h1>
+  <p class="subtitle">
+    Camera + gesture recognition run here (laptop) &mdash; confirmed commands are sent to
+    <code id="pi-url">{{ pi_url }}</code>
+  </p>
+
+  <div class="layout">
+    <div class="video-stack">
+      <div class="video-col">
+        <p class="video-title">Gesture Camera &mdash; this laptop</p>
+        <div class="video-card">
+          <img src="/video_feed" alt="gesture control camera feed">
+          <div class="video-footer">
+            <span id="hand-status" class="pill muted"><span class="dot"></span> no hand</span>
+            <span class="fps-badge" id="fps">-- fps</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="video-col">
+        <p class="video-title">Robot Camera &mdash; what the Pi sees</p>
+        <div class="video-card unavailable" id="robot-cam-card">
+          <img id="robot-cam-img" src="" alt="robot's forward-facing camera feed"
+               onerror="document.getElementById('robot-cam-card').classList.add('unavailable')"
+               onload="document.getElementById('robot-cam-card').classList.remove('unavailable')">
+          <div class="video-empty">No feed from the Pi yet &mdash; check robot/pi_server.py is running with a camera attached (not started with --no-camera).</div>
+          <div class="video-footer">
+            <span id="robot-cam-url" style="font-size:11px;">-</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h2>Pi Connection</h2>
+        <div class="row">
+          <span class="label">status</span>
+          <span id="pi-status" class="pill muted"><span class="dot"></span> waiting...</span>
+        </div>
+        <div class="row" id="pi-error-row" style="display:none">
+          <span class="label">error</span>
+          <span class="value" id="pi-error" style="color: var(--warn); font-weight: 400;"></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Gesture</h2>
+        <div class="row">
+          <span class="label">raw prediction</span>
+          <span class="value" id="raw-pred">-</span>
+        </div>
+        <div class="row">
+          <span class="label">confidence</span>
+          <span class="value" id="conf">-</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Command Sent to Robot</h2>
+        <div class="command" id="sent-command">-</div>
+      </div>
+
+      <div class="panel">
+        <button class="btn-stop" id="stop-btn">STOP NOW</button>
+        <button class="btn-reset" id="reset-btn">Reset gesture smoother</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+async function poll() {
+  try {
+    const r = await fetch("/stats");
+    const s = await r.json();
+
+    document.getElementById("fps").textContent = s.fps.toFixed(1) + " fps";
+
+    const handEl = document.getElementById("hand-status");
+    handEl.className = "pill " + (s.hand_detected ? "ok" : "muted");
+    handEl.innerHTML = '<span class="dot"></span> ' + (s.hand_detected ? "hand visible" : "no hand");
+
+    document.getElementById("raw-pred").textContent = s.pred ? s.pred : "-";
+    document.getElementById("conf").textContent = s.pred ? Math.round(s.conf * 100) + "%" : "-";
+    document.getElementById("sent-command").textContent = s.sent_command || "-";
+    if (s.pi_url) document.getElementById("pi-url").textContent = s.pi_url;
+
+    if (s.pi_video_url) {
+      const img = document.getElementById("robot-cam-img");
+      document.getElementById("robot-cam-url").textContent = s.pi_video_url;
+      // Only (re)point the <img> when the URL actually changes (e.g. after
+      // auto-rediscovery finds the Pi at a new address) -- reassigning the
+      // same src on every 300ms poll would restart the MJPEG stream
+      // connection constantly instead of letting it play continuously.
+      if (img.dataset.src !== s.pi_video_url) {
+        img.dataset.src = s.pi_video_url;
+        img.src = s.pi_video_url;
+      }
+    }
+
+    const piEl = document.getElementById("pi-status");
+    const errRow = document.getElementById("pi-error-row");
+    if (s.pi_connected === null) {
+      piEl.className = "pill muted";
+      piEl.innerHTML = '<span class="dot"></span> waiting...';
+      errRow.style.display = "none";
+    } else if (s.pi_connected) {
+      piEl.className = "pill ok";
+      piEl.innerHTML = '<span class="dot"></span> connected';
+      errRow.style.display = "none";
+    } else {
+      piEl.className = "pill warn";
+      piEl.innerHTML = '<span class="dot"></span> unreachable (auto-retrying...)';
+      document.getElementById("pi-error").textContent = s.pi_error || "unknown error";
+      errRow.style.display = "flex";
+    }
+  } catch (e) {
+    // network hiccup polling our own /stats -- ignore, try again next tick
+  }
+}
+setInterval(poll, 300);
+poll();
+
+document.getElementById("stop-btn").addEventListener("click", () => {
+  fetch("/stop", { method: "POST" });
+});
+document.getElementById("reset-btn").addEventListener("click", () => {
+  fetch("/reset", { method: "POST" });
+});
+</script>
+</body>
+</html>

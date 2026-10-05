@@ -1,0 +1,9 @@
+.git
+__pycache__
+*.pyc
+*.log
+extracted_frames
+data
+results
+docs
+*.md

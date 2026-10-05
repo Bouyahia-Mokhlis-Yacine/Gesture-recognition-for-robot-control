@@ -1,0 +1,70 @@
+# For RUNNING the project only (web_app/app.py, robot/run_pipeline.py,
+# benchmark_pi.py) -- not training/evaluating models. Skips pandas,
+# matplotlib, and seaborn, which are only used by the data-prep/training/
+# evaluation scripts (data/prepare_dataset.py, train_*.py, evaluate.py,
+# common/metrics.py's confusion-matrix plotting). Use requirements.txt
+# instead if you need to train or re-evaluate anything.
+#
+# INSTALL TORCH FIRST, from the CPU-only index -- REQUIRED on a Raspberry
+# Pi (no NVIDIA GPU) and on any machine that will only run, not train,
+# models. Skipping this step and just running `pip install -r
+# requirements-run.txt` pulls torch's DEFAULT PyPI wheel instead, which
+# bundles ~1.5GB+ of NVIDIA CUDA/cuDNN packages that are useless without an
+# NVIDIA GPU (aarch64 CUDA wheels exist now too, so this bites Pi installs
+# specifically, not just x86 CPU-only machines):
+#
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+#   pip install -r requirements-run.txt
+#   pip install "numpy>=2"
+#
+# The second command sees torch/torchvision already satisfied and leaves
+# them alone -- it only installs the rest. The third command is REQUIRED
+# on a Raspberry Pi 4 specifically: mediapipe is pinned to 0.10.18 below
+# (see that line's comment for why), and installing it downgrades numpy to
+# <2, which breaks unpickling the .joblib models (trained with numpy>=2 on
+# the dev machine) with "ValueError: ... MT19937 is not a known
+# BitGenerator". mediapipe's own numpy<2 pin is overly conservative --
+# verified working with numpy 2.4.6 on a Pi 4 in practice, pip will just
+# print a dependency-conflict warning, which is safe to ignore here.
+opencv-python-headless
+mediapipe==0.10.18
+# ^ NOT unpinned/latest: mediapipe>=1.0 SIGILL-crashes on a Raspberry Pi 4
+# (Cortex-A72, BCM2711 SoC) the moment you build a HandLandmarker/graph
+# (works fine at bare `import mediapipe`, crashes on
+# `HandLandmarker.create_from_options()`) --
+# "FATAL ERROR: This binary was compiled with aes enabled, but this
+# feature is not available on this processor (go/sigill-fail-fast)". The
+# A72 doesn't implement the optional ARMv8 crypto extensions in hardware
+# (confirm via `cat /proc/cpuinfo | grep Features` -- no "aes" listed);
+# recent mediapipe aarch64 wheels assume they're always present. 1.0.0 has
+# the same crash, not just 1.0.1. 0.10.18 (last of the 0.10.x line) is
+# confirmed NOT to crash and still has the Tasks API
+# (HandLandmarker/BaseOptions) this project needs -- that API predates the
+# 1.0 release, which only removed the old mp.solutions.hands API. A
+# Raspberry Pi 5 (Cortex-A76, has crypto extensions) may not need this pin.
+scikit-learn
+psutil
+pillow
+joblib
+torch
+torchvision
+gpiozero
+lgpio
+# ^ gpiozero needs a real PWM-capable pin factory for robot/motor_controller.py's
+# variable-speed Motor() control -- without one of lgpio/RPi.GPIO/pigpio
+# installed, it silently falls back to its bare "Native" pin factory, which
+# doesn't support PWM at all and crashes with
+# "gpiozero.exc.PinPWMUnsupported: PWM is not supported on pin GPIO17" the
+# moment MotorController tries to construct a Motor -- not at import time,
+# so this only shows up once you actually run without --dry-run. lgpio is
+# the current recommended backend for Raspberry Pi OS Bookworm/Trixie
+# (RPi.GPIO doesn't support the newer gpiochip character-device kernel
+# interface; pigpio's daemon-based approach is being phased out). Harmless
+# to install on a non-Pi dev machine too (there's an x86_64 wheel) -- it's
+# just unused there since MotorController only touches real GPIO when not
+# in --dry-run mode.
+flask
+requests
+# ^ only needed on the laptop side for web_app/remote_app.py (posts
+# gesture commands to robot/pi_server.py over HTTP) -- pi_server.py itself
+# only receives, so this is unused (but harmless) if installed on the Pi.
